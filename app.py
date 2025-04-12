@@ -22,14 +22,16 @@ def index():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # Load the model inside the route to reduce memory use on startup
+        # Dynamically import and load the model
         from tensorflow.keras.models import load_model
         model = load_model('model_bccd.h5', compile=False)
 
-        # Clean uploads directory
+        # Clean uploads folder
         if os.path.exists(app.config['UPLOAD_FOLDER']):
             for f in os.listdir(app.config['UPLOAD_FOLDER']):
-                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], f))
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], f)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
 
         if 'file' not in request.files:
             return 'No file uploaded!', 400
@@ -38,11 +40,11 @@ def predict():
         if file.filename == '':
             return 'No selected file!', 400
 
-        # Save uploaded file
+        # Save uploaded image
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
 
-        # Preprocess the image
+        # Preprocess image
         img = load_img(filepath, target_size=(224, 224))
         img_array = img_to_array(img)
         img_array = np.expand_dims(img_array, axis=0)
