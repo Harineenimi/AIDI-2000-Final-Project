@@ -4,14 +4,22 @@ from tensorflow.keras.preprocessing.image import load_img, img_to_array  # type:
 from tensorflow.keras.applications.densenet import preprocess_input  # type: ignore
 import numpy as np
 import os
-import shutil
+import traceback
 
 app = Flask(__name__)
 STATIC_UPLOADS = os.path.join('static', 'uploads')
 app.config['UPLOAD_FOLDER'] = STATIC_UPLOADS
 
-# Load trained DenseNet model (suppress layer name restrictions)
-model = load_model('model_bccd.h5', compile=False)
+# Ensure uploads folder exists
+os.makedirs(STATIC_UPLOADS, exist_ok=True)
+
+# Load trained DenseNet model
+try:
+    model = load_model('model_bccd.h5', compile=False)
+except Exception as e:
+    print("❌ Error loading model:", e)
+    traceback.print_exc()
+    model = None  # Prevent app from crashing
 
 # Class labels
 class_names = ['EOSINOPHIL', 'LYMPHOCYTE', 'MONOCYTE', 'NEUTROPHIL']
@@ -22,34 +30,43 @@ def index():
 
 @app.route('/predict', methods=['POST'])
 def predict():
-    # Clean uploads directory
-    for f in os.listdir(app.config['UPLOAD_FOLDER']):
-        os.remove(os.path.join(app.config['UPLOAD_FOLDER'], f))
+    try:
+        if model is None:
+            return "Model not loaded. Check server logs.", 500
 
-    if 'file' not in request.files:
-        return 'No file uploaded!', 400
+        # Clean uploads directory
+        if os.path.exists(app.config['UPLOAD_FOLDER']):
+            for f in os.listdir(app.config['UPLOAD_FOLDER']):
+                os.remove(os.path.join(app.config['UPLOAD_FOLDER'], f))
 
-    file = request.files['file']
-    if file.filename == '':
-        return 'No selected file!', 400
+        if 'file' not in request.files:
+            return 'No file uploaded!', 400
 
-    # Save the uploaded file to static/uploads/
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-    file.save(filepath)
+        file = request.files['file']
+        if file.filename == '':
+            return 'No selected file!', 400
 
-    # Preprocess the image
-    img = load_img(filepath, target_size=(224, 224))
-    img_array = img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)
-    img_array = preprocess_input(img_array)
+        # Save uploaded file
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filepath)
 
-    # Make prediction
-    prediction = model.predict(img_array)
-    class_index = np.argmax(prediction, axis=1)[0]
-    result = class_names[class_index]
+        # Preprocess the image
+        img = load_img(filepath, target_size=(224, 224))
+        img_array = img_to_array(img)
+        img_array = np.expand_dims(img_array, axis=0)
+        img_array = preprocess_input(img_array)
 
-    return render_template('index.html', prediction=result, image_path='uploads/' + file.filename)
+        # Predict
+        prediction = model.predict(img_array)
+        class_index = np.argmax(prediction, axis=1)[0]
+        result = class_names[class_index]
+
+        return render_template('index.html', prediction=result, image_path='uploads/' + file.filename)
+
+    except Exception as e:
+        print("❌ Prediction error:", e)
+        traceback.print_exc()
+        return f"Internal Server Error: {str(e)}", 500
 
 if __name__ == '__main__':
-    os.makedirs(STATIC_UPLOADS, exist_ok=True)
     app.run(debug=True)
