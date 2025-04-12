@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request
-from tensorflow.keras.models import load_model  # type: ignore
 from tensorflow.keras.preprocessing.image import load_img, img_to_array  # type: ignore
 from tensorflow.keras.applications.densenet import preprocess_input  # type: ignore
 import numpy as np
@@ -13,14 +12,6 @@ app.config['UPLOAD_FOLDER'] = STATIC_UPLOADS
 # Ensure uploads folder exists
 os.makedirs(STATIC_UPLOADS, exist_ok=True)
 
-# Load trained DenseNet model
-try:
-    model = load_model('model_bccd.h5', compile=False)
-except Exception as e:
-    print("❌ Error loading model:", e)
-    traceback.print_exc()
-    model = None  # Prevent app from crashing
-
 # Class labels
 class_names = ['EOSINOPHIL', 'LYMPHOCYTE', 'MONOCYTE', 'NEUTROPHIL']
 
@@ -31,8 +22,9 @@ def index():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        if model is None:
-            return "Model not loaded. Check server logs.", 500
+        # Load the model inside the route to reduce memory use on startup
+        from tensorflow.keras.models import load_model
+        model = load_model('model_bccd.h5', compile=False)
 
         # Clean uploads directory
         if os.path.exists(app.config['UPLOAD_FOLDER']):
