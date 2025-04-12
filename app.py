@@ -4,6 +4,7 @@ from tensorflow.keras.applications.densenet import preprocess_input  # type: ign
 import numpy as np
 import os
 import traceback
+import tensorflow as tf  # TensorFlow Lite is included here
 
 app = Flask(__name__)
 STATIC_UPLOADS = os.path.join('static', 'uploads')
@@ -15,6 +16,12 @@ os.makedirs(STATIC_UPLOADS, exist_ok=True)
 # Class labels
 class_names = ['EOSINOPHIL', 'LYMPHOCYTE', 'MONOCYTE', 'NEUTROPHIL']
 
+# Load TFLite model only once
+interpreter = tf.lite.Interpreter(model_path="model_bccd_compressed.tflite")
+interpreter.allocate_tensors()
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
 @app.route('/')
 def index():
     return render_template('index.html', prediction=None, image_path=None)
@@ -22,11 +29,7 @@ def index():
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        # Dynamically import and load the model
-        from tensorflow.keras.models import load_model
-        model = load_model('model_bccd.h5', compile=False)
-
-        # Clean uploads folder
+        # Clean uploads directory
         if os.path.exists(app.config['UPLOAD_FOLDER']):
             for f in os.listdir(app.config['UPLOAD_FOLDER']):
                 file_path = os.path.join(app.config['UPLOAD_FOLDER'], f)
@@ -40,7 +43,7 @@ def predict():
         if file.filename == '':
             return 'No selected file!', 400
 
-        # Save uploaded image
+        # Save uploaded file
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filepath)
 
@@ -48,11 +51,21 @@ def predict():
         img = load_img(filepath, target_size=(224, 224))
         img_array = img_to_array(img)
         img_array = np.expand_dims(img_array, axis=0)
-        img_array = preprocess_input(img_array)
+        img_array = preprocess_input(img_array)  # If model expects DenseNet-preprocessed input
 
-        # Predict
-        prediction = model.predict(img_array)
-        class_index = np.argmax(prediction, axis=1)[0]
+        # Convert to float32 if required by the TFLite model
+        if input_details[0]['dtype'] == np.float32:
+            img_array = img_array.astype(np.float32)
+
+        # Set input tensor
+        interpreter.set_tensor(input_details[0]['index'], img_array)
+
+        # Run inference
+        interpreter.invoke()
+
+        # Get prediction
+        output_data = interpreter.get_tensor(output_details[0]['index'])
+        class_index = np.argmax(output_data, axis=1)[0]
         result = class_names[class_index]
 
         return render_template('index.html', prediction=result, image_path='uploads/' + file.filename)
