@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Blood Cell Classification</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; padding-top: 50px; }
+        input[type=file] { margin: 20px 0; }
+        img { max-width: 300px; margin-top: 20px; border: 1px solid #ccc; }
+        h2 { color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>🔬 Blood Cell Image Classifier</h1>
+
+    <form action="/predict" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <br>
+        <input type="submit" value="Predict">
+    </form>
+
+    {% if prediction %}
+        <h2>Prediction: {{ prediction }}</h2>
+        <img src="{{ url_for('static', filename=image_path) }}" alt="Uploaded Image">
+    {% endif %}
+</body>
+</html>
